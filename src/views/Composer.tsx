@@ -44,6 +44,10 @@ export function Composer() {
   const [name, setName] = useState('')
   const [from, setFrom] = useState('')
   const [link, setLink] = useState<string | null>(null)
+  const [shortLink, setShortLink] = useState<string | null>(null)
+  // Shorteners occasionally hand back a link that does not resolve, so the
+  // full link stays one tap away rather than being thrown out.
+  const [useShort, setUseShort] = useState(true)
   const [shortening, setShortening] = useState(false)
   const [provider, setProvider] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
@@ -73,6 +77,8 @@ export function Composer() {
     // is a network call that may be slow, blocked, or rate-limited.
     const longUrl = buildGiftUrl(gift)
     setLink(longUrl)
+    setShortLink(null)
+    setUseShort(true)
     setProvider(null)
     setCopied(false)
     setShortening(true)
@@ -84,15 +90,21 @@ export function Composer() {
 
     const result = await shortenUrl(longUrl)
     // Guard against an edit having invalidated this link while we waited.
-    setLink((current) => (current === longUrl ? result.url : current))
+    setLink((current) => {
+      if (current !== longUrl) return current
+      if (result.provider) setShortLink(result.url)
+      return current
+    })
     setProvider(result.provider)
     setShortening(false)
   }
 
+  const shownLink = useShort && shortLink ? shortLink : link
+
   async function handleCopy() {
-    if (!link) return
+    if (!shownLink) return
     try {
-      await navigator.clipboard.writeText(link)
+      await navigator.clipboard.writeText(shownLink)
     } catch {
       // Clipboard API needs a secure context; fall back to selecting the text.
       const input = document.getElementById('gift-link-input') as HTMLInputElement | null
@@ -103,9 +115,9 @@ export function Composer() {
   }
 
   async function handleShare() {
-    if (!link) return
+    if (!shownLink) return
     try {
-      await navigator.share({ title: 'A little gift for you', url: link })
+      await navigator.share({ title: 'A little gift for you', url: shownLink })
     } catch {
       // Dismissing the share sheet rejects; nothing to recover from.
     }
@@ -116,6 +128,7 @@ export function Composer() {
     setIceCream(shuffle(ICE_CREAMS, iceCream) as IceCreamId)
     setTheme(shuffle(THEMES, theme))
     setLink(null)
+    setShortLink(null)
     setProvider(null)
     setShortening(false)
   }
@@ -125,6 +138,7 @@ export function Composer() {
     return (value: T) => {
       setter(value)
       setLink(null)
+      setShortLink(null)
       setProvider(null)
       setShortening(false)
     }
@@ -342,15 +356,30 @@ export function Composer() {
                 looking at it.{' '}
                 {shortening
                   ? 'Trying to shorten it too.'
-                  : provider
-                    ? `Shortened with ${provider}.`
+                  : shortLink
+                    ? useShort
+                      ? `Shortened with ${provider}.`
+                      : 'Showing the full link.'
                     : 'Shortening was unavailable, so this is the full link.'}
               </p>
+
+              {shortLink && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUseShort((v) => !v)
+                    setCopied(false)
+                  }}
+                  className="mt-1.5 text-[12px] font-medium text-accent-600 underline underline-offset-2 focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:outline-none"
+                >
+                  {useShort ? 'Use the full link instead' : 'Use the short link'}
+                </button>
+              )}
 
               <input
                 id="gift-link-input"
                 readOnly
-                value={link}
+                value={shownLink ?? ''}
                 onFocus={(e) => e.currentTarget.select()}
                 className="mt-3 w-full rounded-xl border border-black/5 bg-accent-50 px-3 py-2.5 font-mono text-[11px] text-ink-soft focus:outline-none"
               />
@@ -373,7 +402,7 @@ export function Composer() {
                   </button>
                 )}
                 <a
-                  href={link}
+                  href={shownLink ?? '#'}
                   target="_blank"
                   rel="noreferrer"
                   className="min-w-28 flex-1 rounded-full border border-accent-200 px-4 py-3 text-center text-[14px] font-medium text-accent-600 transition-colors hover:bg-accent-50 focus-visible:ring-2 focus-visible:ring-accent-400 focus-visible:ring-offset-2 focus-visible:outline-none"

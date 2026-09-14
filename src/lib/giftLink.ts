@@ -128,25 +128,25 @@ function clampString(value: unknown, max: number): string {
 /**
  * Absolute, shareable URL for a gift.
  *
- * The payload goes in the fragment rather than the query string on purpose:
- * fragments are never sent in an HTTP request, so the gift stays out of the
- * host's access logs, out of Referer headers, and out of any proxy in
- * between. It is also the part of the URL a shortener has to carry verbatim.
+ * Two deliberate choices here, both learned the hard way:
+ *
+ * 1. The payload goes in the fragment, not the query string. Fragments are
+ *    never sent in an HTTP request, so the gift stays out of the host's
+ *    access logs, out of Referer headers, and out of any proxy in between.
+ *
+ * 2. The link points at the *root* path, with the route itself inside the
+ *    fragment. A pretty `/gift#...` URL needs the host to rewrite unknown
+ *    paths to index.html, and when that is not configured the shared link
+ *    404s - which is exactly what happened on App Platform, because creating
+ *    an app through its UI does not read `.do/app.yaml`. The root path always
+ *    resolves, on every static host, with no configuration at all.
  */
 export function buildGiftUrl(gift: GiftPayload): string {
   const url = new URL(window.location.href)
   url.search = ''
-  url.pathname = withBase('gift')
-  url.hash = encodeGift(gift)
+  url.pathname = import.meta.env.BASE_URL
+  url.hash = `/gift/${encodeGift(gift)}`
   return url.toString()
-}
-
-/**
- * Vite's BASE_URL always has a trailing slash, so joining is just concat.
- * Keeps the app working if it is ever served from a subpath.
- */
-function withBase(path: string): string {
-  return `${import.meta.env.BASE_URL}${path}`
 }
 
 export type View = 'composer' | 'reveal'
@@ -154,17 +154,23 @@ export type View = 'composer' | 'reveal'
 /**
  * Two views, resolved straight off the URL.
  *
- * Current links look like `/gift#<blob>`. The older shapes are still
- * accepted, because links already sent cannot be recalled:
+ * Current links look like `/#/gift/<blob>` - root path, route in the
+ * fragment, so no host rewrite rules are needed. Every earlier shape is
+ * still accepted, because links already sent cannot be recalled:
+ *   - `/gift#<blob>`        pretty path, needs a catchall on the host
  *   - `/gift?data=<blob>`   the original query form
- *   - `/#/gift?data=<blob>` the hash-routed form, for hosts with no catchall
+ *   - `/#/gift?data=<blob>` the first hash-routed form
  *   - `/?data=<blob>`       some chat apps drop the path but keep the query
  */
 export function resolveRoute(): { view: View; data: string | null } {
   const { pathname, search, hash } = window.location
   const fragment = hash.startsWith('#') ? hash.slice(1) : hash
 
-  // Hash-routed form: the fragment is itself a path with a query on it.
+  // Current form: the route and the payload both live in the fragment.
+  const routed = fragment.match(/^\/gift\/(.+)$/)
+  if (routed) return { view: 'reveal', data: routed[1] }
+
+  // Earlier hash-routed form, where the payload was a query parameter.
   if (fragment.startsWith('/gift')) {
     const query = fragment.slice(fragment.indexOf('?') + 1)
     const data = fragment.includes('?') ? new URLSearchParams(query).get('data') : null
@@ -173,7 +179,7 @@ export function resolveRoute(): { view: View; data: string | null } {
 
   const onGiftPath = /\/gift\/?$/.test(pathname)
 
-  // Current form: the fragment is the payload itself.
+  // Pretty-path form: the whole fragment is the payload.
   if (onGiftPath && fragment && !fragment.startsWith('/')) {
     return { view: 'reveal', data: fragment }
   }

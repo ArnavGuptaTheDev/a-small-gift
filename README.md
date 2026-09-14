@@ -17,7 +17,7 @@ Two views, switched on the URL by [`resolveRoute`](src/lib/giftLink.ts):
 | URL | View |
 | --- | --- |
 | `/` | **Composer** — pick flowers, pick ice cream, write a note, get a link |
-| `/gift#...` | **Reveal** — the animated page you send |
+| `/#/gift/...` | **Reveal** — the animated page you send |
 
 The gift object (`{flower, iceCream, theme, occasion, message, name, from}`)
 is serialised to JSON, UTF-8 encoded, scrambled (see below), then base64url
@@ -28,6 +28,14 @@ would mangle them.
 The payload rides in the **fragment**, not the query string. Fragments are
 never sent in an HTTP request, so the gift stays out of the host's access
 logs, out of `Referer` headers, and out of any proxy in between.
+
+**The route is in the fragment too, and the link points at the root path.**
+That is not cosmetic. A prettier `/gift#...` URL requires the host to rewrite
+unknown paths to `index.html`, and if that is not configured the shared link
+404s — which is exactly what happened on the first deploy. The root path
+resolves on every static host with no configuration at all. Older link shapes
+(`/gift#...`, `/gift?data=...`, `/#/gift?data=...`) still decode, so anything
+already sent keeps working.
 
 Decoding is defensive: a missing, truncated, or corrupted `data` param shows a
 friendly "this link looks incomplete" page instead of a blank screen, and
@@ -131,6 +139,9 @@ Other bits:
 - **Surprise me** shuffles the flowers, ice cream and theme in one click.
 - **Share** uses the native share sheet where the browser has it, falling back
   to plain copy where it does not.
+- **The full link stays one tap away** after shortening. Free shorteners
+  occasionally return a link that does not resolve, so discarding the long one
+  would leave no recourse.
 - **Play again** replays the reveal from the envelope.
 
 ## Running it
@@ -176,9 +187,18 @@ on `main`. If you fork or rename the repo, update `repo:` to match.
    | Output directory | `dist` |
    | Catchall document | `index.html` |
 
-The catchall is the one easy thing to get wrong. Both views are served by the
-same bundle, so `/gift` has to fall through to `index.html` — without it the
-link you send will 404 on their phone, even though it works locally.
+### A trap worth knowing about
+
+**Creating an app through the App Platform UI does not read `.do/app.yaml`.**
+The spec file is only applied by `doctl apps create --spec` or the
+"Deploy to DigitalOcean" button. Pick a repo in the UI and you get the form's
+defaults — so `catchall_document` silently never gets set, every path except
+`/` returns App Platform's own 404, and because that 404 page is unstyled it
+looks like the CSS broke rather than like a routing problem.
+
+Gift links no longer depend on it: they point at `/`, which always resolves.
+`catchall_document` is still in the spec and still worth setting, because it
+makes the older `/gift#...` links work too — but nothing is broken without it.
 
 Pushes to `main` redeploy automatically (`deploy_on_push: true`).
 

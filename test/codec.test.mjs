@@ -18,7 +18,7 @@ writeFileSync(
 )
 
 globalThis.window = { location: { href: 'https://giftlink.example.com/' } }
-const { encodeGift, decodeGift, buildGiftUrl } = await import('file://' + bundle)
+const { encodeGift, decodeGift, buildGiftUrl, resolveRoute } = await import('file://' + bundle)
 
 const obfBundle = join(out, 'o.mjs')
 await build({ input: 'src/lib/obfuscate.ts', output: { file: obfBundle, format: 'esm' } })
@@ -28,8 +28,8 @@ const giftsBundle = join(out, 'g.mjs')
 await build({ input: 'src/lib/gifts.ts', output: { file: giftsBundle, format: 'esm' } })
 const { rampFromHex, resolveHeadline, resolveSeal } = await import('file://' + giftsBundle)
 
-/** The gift now rides in the fragment, so that is where tests read it from. */
-const payloadOf = (url) => new URL(url).hash.slice(1)
+/** Links are `/#/gift/<blob>`, so strip the route prefix off the fragment. */
+const payloadOf = (url) => new URL(url).hash.replace(/^#\/gift\//, '')
 const decodeBlob = (blob) =>
   JSON.parse(Buffer.from(unpack(Buffer.from(blob, 'base64url'))).toString('utf8'))
 
@@ -91,7 +91,8 @@ check('long-form keys', decodeGift(longform), {
 // 7. The generated URL is well-formed and survives a parse.
 const url = buildGiftUrl(fancy)
 const parsed = new URL(url)
-check('url path', parsed.pathname, '/gift')
+check('url uses the root path', parsed.pathname, '/')
+check('route lives in the fragment', parsed.hash.startsWith('#/gift/'), true)
 check('url survives parse', decodeGift(payloadOf(url)), fancy)
 console.log('\nURL length for a 60-char message:', url.length)
 
@@ -167,9 +168,9 @@ check('legacy plain-JSON link still decodes', decodeGift(legacy), {
 // 16. The gift rides in the fragment, never the query string.
 const shareUrl = buildGiftUrl(secret)
 const parsedShare = new URL(shareUrl)
-check('payload is in the fragment', parsedShare.hash.length > 1, true)
+check('payload is in the fragment', parsedShare.hash.startsWith('#/gift/'), true)
 check('query string is empty', parsedShare.search, '')
-check('fragment round-trips', decodeGift(parsedShare.hash.slice(1)), secret)
+check('fragment round-trips', decodeGift(payloadOf(shareUrl)), secret)
 console.log('share URL:', shareUrl.length, 'chars')
 
 // 17. A custom colour survives as a colour, not as a rejected theme id.
@@ -234,6 +235,33 @@ check('every hue: white on 500 >= 3.0', worst500 >= 2.99, true)
 check('every hue: 600 on white >= 4.5', worst600 >= 4.49, true)
 check('600 always darker than 500', monotonic, true)
 console.log(`ramp contrast floor: 500=${worst500.toFixed(2)} 600=${worst600.toFixed(2)}`)
+
+// 21. Route resolution for every link shape we have ever emitted. This is
+//     the bug that reached production: /gift#<blob> needs the host to rewrite
+//     unknown paths to index.html, and without that the shared link 404s.
+const at = (href) => {
+  window.location = Object.assign(new URL(href), { href })
+  return resolveRoute()
+}
+const BLOB = encodeGift(secret)
+
+const routes = [
+  ['root composer',        'https://g.example.com/',                              'composer', null],
+  ['current /#/gift/blob', `https://g.example.com/#/gift/${BLOB}`,                 'reveal',   BLOB],
+  ['pretty /gift#blob',    `https://g.example.com/gift#${BLOB}`,                   'reveal',   BLOB],
+  ['legacy /gift?data=',   `https://g.example.com/gift?data=${BLOB}`,              'reveal',   BLOB],
+  ['legacy /#/gift?data=', `https://g.example.com/#/gift?data=${BLOB}`,            'reveal',   BLOB],
+  ['legacy /?data=',       `https://g.example.com/?data=${BLOB}`,                  'reveal',   BLOB],
+  ['bare /gift',           'https://g.example.com/gift',                           'reveal',   null],
+]
+for (const [label, href, view, data] of routes) {
+  const r = at(href)
+  check(`route: ${label}`, { view: r.view, data: r.data }, { view, data })
+}
+check('current shape decodes end to end', decodeGift(at(`https://g.example.com/#/gift/${BLOB}`).data), secret)
+
+// Restore the origin the earlier tests assumed.
+window.location = { href: 'https://giftlink.example.com/' }
 
 console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} FAILURE(S)`)
 process.exit(failures === 0 ? 0 : 1)
