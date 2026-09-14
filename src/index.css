@@ -1,0 +1,66 @@
+@import "tailwindcss";
+
+/*
+ * The accent ramp is a runtime choice, not a build-time one - each theme in
+ * gifts.ts overrides these on a wrapper element. The defaults here are the
+ * Blush theme, so anything rendered outside a theme wrapper still looks right.
+ */
+:root {
+  --accent-50: #fdf4f7;
+  --accent-100: #fbe8ee;
+  --accent-200: #f7d1dd;
+  --accent-300: #f0adc2;
+  --accent-400: #e4809f;
+  --accent-500: #d15c80;
+  --accent-600: #b8436a;
+}
+
+/* `inline` emits var() references rather than resolved values, which is what
+   lets the ramp above be swapped per theme at runtime. */
+@theme inline {
+  --color-accent-50: var(--accent-50);
+  --color-accent-100: var(--accent-100);
+  --color-accent-200: var(--accent-200);
+  --color-accent-300: var(--accent-300);
+  --color-accent-400: var(--accent-400);
+  --color-accent-500: var(--accent-500);
+  --color-accent-600: var(--accent-600);
+}
+
+@theme {
+  /* Neutral chrome, so the composer reads as a tool rather than as one
+     particular mood. Colour comes from the chosen theme. */
+  --color-canvas: #faf8f6;
+  --color-ink: #3f3a3d;
+  --color-ink-soft: #78706f;
+
+  --font-serif-soft: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia,
+    "Times New Roman", ui-serif, serif;
+  --font-script: "Snell Roundhand", "Segoe Script", "Bradley Hand", Gabriola,
+    "Brush Script MT", cursive;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

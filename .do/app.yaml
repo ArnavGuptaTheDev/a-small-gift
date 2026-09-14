@@ -1,0 +1,27 @@
+# DigitalOcean App Platform - static site spec.
+#
+# Change `repo` to your own GitHub repo, then either:
+#   doctl apps create --spec .do/app.yaml
+# or point the App Platform UI at this repo and it will pick this file up.
+name: giftlink
+region: nyc
+
+static_sites:
+  - name: web
+    # --- change this to <your-github-user>/<your-repo> ---
+    github:
+      repo: your-github-user/giftlink
+      branch: main
+      deploy_on_push: true
+
+    source_dir: /
+    build_command: npm run build
+    output_dir: dist
+
+    # Both views are rendered by the same bundle, so every unmatched path
+    # (notably /gift) has to fall through to index.html. Without this,
+    # the shared link 404s.
+    catchall_document: index.html
+
+    routes:
+      - path: /
