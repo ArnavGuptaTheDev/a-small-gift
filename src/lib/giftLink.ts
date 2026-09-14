@@ -4,20 +4,25 @@ import {
   DEFAULT_OCCASION,
   DEFAULT_THEME,
   FLOWERS,
+  HEADLINE_MAX,
   ICE_CREAMS,
-  OCCASIONS,
+  isHexColor,
+  isValidOccasion,
   THEMES,
   type FlowerId,
   type IceCreamId,
-  type OccasionId,
-  type ThemeId,
 } from './gifts'
+import { pack, unpack } from './obfuscate'
 
 export interface GiftPayload {
   flower: FlowerId
   iceCream: IceCreamId
-  theme: ThemeId
-  occasion: OccasionId
+  /** A preset theme id, or a `#rrggbb` colour of their own. */
+  theme: string
+  /** A preset occasion id, or `custom` - see `headline`. */
+  occasion: string
+  /** Used as the headline when `occasion` is `custom`. */
+  headline: string
   message: string
   name: string
   /** Who it is from - shown as a signature under the note. */
@@ -63,17 +68,22 @@ export function encodeGift(gift: GiftPayload): string {
     i: gift.iceCream,
     ...(gift.theme === DEFAULT_THEME ? {} : { t: gift.theme }),
     ...(gift.occasion === DEFAULT_OCCASION ? {} : { o: gift.occasion }),
+    ...(gift.headline ? { h: gift.headline } : {}),
     ...(gift.message ? { m: gift.message } : {}),
     ...(gift.name ? { n: gift.name } : {}),
     ...(gift.from ? { s: gift.from } : {}),
   })
-  return bytesToBase64Url(new TextEncoder().encode(json))
+  return bytesToBase64Url(pack(new TextEncoder().encode(json)))
 }
 
 export function decodeGift(encoded: string | null): GiftPayload | null {
   if (!encoded) return null
   try {
-    const json = new TextDecoder().decode(base64UrlToBytes(encoded))
+    const bytes = base64UrlToBytes(encoded)
+    // Links made before payloads were obfuscated are plain JSON, and should
+    // keep working - anything already sent is out of our hands.
+    const plain = unpack(bytes) ?? bytes
+    const json = new TextDecoder().decode(plain)
     const raw = JSON.parse(json) as Record<string, unknown>
     if (typeof raw !== 'object' || raw === null) return null
 
@@ -85,8 +95,11 @@ export function decodeGift(encoded: string | null): GiftPayload | null {
     return {
       flower,
       iceCream,
-      theme: pickId(raw.t ?? raw.theme, THEMES, DEFAULT_THEME) as ThemeId,
-      occasion: pickId(raw.o ?? raw.occasion, OCCASIONS, DEFAULT_OCCASION) as OccasionId,
+      theme: pickTheme(raw.t ?? raw.theme),
+      occasion: isValidOccasion(raw.o ?? raw.occasion)
+        ? ((raw.o ?? raw.occasion) as string)
+        : DEFAULT_OCCASION,
+      headline: clampString(raw.h ?? raw.headline, HEADLINE_MAX),
       message: clampString(raw.m ?? raw.message, MESSAGE_MAX),
       name: clampString(raw.n ?? raw.name, NAME_MAX),
       from: clampString(raw.s ?? raw.from, FROM_MAX),
@@ -102,17 +115,29 @@ function pickId(value: unknown, list: { id: string }[], fallback: string): strin
     : fallback
 }
 
+/** A preset theme id, or any valid `#rrggbb` colour. */
+function pickTheme(value: unknown): string {
+  if (typeof value === 'string' && isHexColor(value)) return value.toLowerCase()
+  return pickId(value, THEMES, DEFAULT_THEME)
+}
+
 function clampString(value: unknown, max: number): string {
   return typeof value === 'string' ? value.slice(0, max) : ''
 }
 
-/** Absolute, shareable URL for a gift. */
+/**
+ * Absolute, shareable URL for a gift.
+ *
+ * The payload goes in the fragment rather than the query string on purpose:
+ * fragments are never sent in an HTTP request, so the gift stays out of the
+ * host's access logs, out of Referer headers, and out of any proxy in
+ * between. It is also the part of the URL a shortener has to carry verbatim.
+ */
 export function buildGiftUrl(gift: GiftPayload): string {
   const url = new URL(window.location.href)
-  url.hash = ''
   url.search = ''
   url.pathname = withBase('gift')
-  url.searchParams.set('data', encodeGift(gift))
+  url.hash = encodeGift(gift)
   return url.toString()
 }
 
@@ -127,27 +152,36 @@ function withBase(path: string): string {
 export type View = 'composer' | 'reveal'
 
 /**
- * Two views, resolved straight off the URL. We accept the pretty path
- * (/gift?data=...) and a hash form (#/gift?data=...) so the link still works
- * on hosts that do not rewrite unknown paths to index.html.
+ * Two views, resolved straight off the URL.
+ *
+ * Current links look like `/gift#<blob>`. The older shapes are still
+ * accepted, because links already sent cannot be recalled:
+ *   - `/gift?data=<blob>`   the original query form
+ *   - `/#/gift?data=<blob>` the hash-routed form, for hosts with no catchall
+ *   - `/?data=<blob>`       some chat apps drop the path but keep the query
  */
 export function resolveRoute(): { view: View; data: string | null } {
   const { pathname, search, hash } = window.location
+  const fragment = hash.startsWith('#') ? hash.slice(1) : hash
 
-  if (hash.startsWith('#/gift')) {
-    const query = hash.slice(hash.indexOf('?') + 1)
-    const data = hash.includes('?') ? new URLSearchParams(query).get('data') : null
+  // Hash-routed form: the fragment is itself a path with a query on it.
+  if (fragment.startsWith('/gift')) {
+    const query = fragment.slice(fragment.indexOf('?') + 1)
+    const data = fragment.includes('?') ? new URLSearchParams(query).get('data') : null
     return { view: 'reveal', data }
   }
 
-  if (/\/gift\/?$/.test(pathname)) {
-    return { view: 'reveal', data: new URLSearchParams(search).get('data') }
+  const onGiftPath = /\/gift\/?$/.test(pathname)
+
+  // Current form: the fragment is the payload itself.
+  if (onGiftPath && fragment && !fragment.startsWith('/')) {
+    return { view: 'reveal', data: fragment }
   }
 
-  // A bare ?data= on the root is treated as a reveal too - some chat apps
-  // mangle the path but keep the query.
-  const rootData = new URLSearchParams(search).get('data')
-  if (rootData) return { view: 'reveal', data: rootData }
+  const queryData = new URLSearchParams(search).get('data')
+  if (onGiftPath || queryData) {
+    return { view: 'reveal', data: queryData }
+  }
 
   return { view: 'composer', data: null }
 }

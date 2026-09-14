@@ -90,9 +90,9 @@ export function Bouquet({ flower, delay = 0 }: Props) {
         style={{ transformOrigin: '100px 186px' }}
         transition={{ duration: 0.5, delay: delay + 0.9, ease: 'backOut' }}
       >
-        <path d="M 72 172 L 100 206 L 128 172 Q 100 186 72 172 Z" fill="#f7e3ea" />
-        <path d="M 72 172 L 100 206 L 100 186 Q 84 182 72 172 Z" fill="#eccdd9" />
-        <rect x="88" y="176" width="24" height="9" rx="4.5" fill="#d99bb2" />
+        <path d="M 72 172 L 100 206 L 128 172 Q 100 186 72 172 Z" fill="var(--accent-100)" />
+        <path d="M 72 172 L 100 206 L 100 186 Q 84 182 72 172 Z" fill="var(--accent-200)" />
+        <rect x="88" y="176" width="24" height="9" rx="4.5" fill="var(--accent-300)" />
       </motion.g>
     </svg>
   )

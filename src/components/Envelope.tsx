@@ -3,8 +3,15 @@ import { motion } from 'framer-motion'
 interface Props {
   /** Written on the front of the envelope, when we know it. */
   name: string
+  seal: 'heart' | 'star'
   onOpen: () => void
 }
+
+const SEALS = {
+  heart:
+    'M100 82s-5.4-3.4-6.9-6.5a3.8 3.8 0 0 1 6.9-2.2 3.8 3.8 0 0 1 6.9 2.2C105.4 78.6 100 82 100 82z',
+  star: 'M100 63.5l2.6 5.9 6.4.7-4.8 4.3 1.3 6.3-5.5-3.2-5.5 3.2 1.3-6.3-4.8-4.3 6.4-.7z',
+} as const
 
 /**
  * The reveal is a sequence, and a sequence that starts on page load is one
@@ -12,7 +19,7 @@ interface Props {
  * behind a tap means it always plays to someone who is actually watching -
  * and it makes the thing feel handed over rather than merely loaded.
  */
-export function Envelope({ name, onOpen }: Props) {
+export function Envelope({ name, seal, onOpen }: Props) {
   return (
     <motion.div
       className="relative z-10 flex flex-col items-center"
@@ -38,11 +45,7 @@ export function Envelope({ name, onOpen }: Props) {
           <path d="M 8 36 q 0 -12 12 -12 h 160 q 12 0 12 12 L 100 96 Z" fill="var(--accent-300)" />
           {/* Wax seal. */}
           <circle cx="100" cy="72" r="17" fill="var(--accent-500)" />
-          <path
-            d="M100 82s-5.4-3.4-6.9-6.5a3.8 3.8 0 0 1 6.9-2.2 3.8 3.8 0 0 1 6.9 2.2C105.4 78.6 100 82 100 82z"
-            fill="#fff"
-            opacity={0.9}
-          />
+          <path d={SEALS[seal]} fill="#fff" opacity={0.9} />
         </svg>
       </motion.button>
 

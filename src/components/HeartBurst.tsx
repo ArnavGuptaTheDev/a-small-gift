@@ -27,12 +27,12 @@ export function HeartBurst({ delay = 0, color = 'var(--accent-400)' }: Props) {
   if (reduceMotion) return null
 
   return (
-    <div aria-hidden className="pointer-events-none absolute inset-x-0 bottom-0 h-0">
+    <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-0">
       {hearts.map((h) => (
         <motion.svg
           key={h.id}
           viewBox="0 0 24 24"
-          className="absolute bottom-0 left-1/2"
+          className="absolute top-0 left-1/2"
           style={{ width: h.size, height: h.size }}
           initial={{ opacity: 0, x: h.x, y: 0, scale: 0.4, rotate: 0 }}
           animate={{
